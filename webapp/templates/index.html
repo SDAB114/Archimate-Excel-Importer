@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archi Importer</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13; --surface: #17171f; --border: #2a2a38;
+      --accent: #5b6bff; --accent2: #a78bfa;
+      --success: #34d399; --error: #f87171;
+      --text: #e2e2f0; --muted: #6b6b8a; --fn-color: #fbbf24;
+    }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'IBM Plex Sans', sans-serif;
+      min-height: 100vh; display: flex;
+      align-items: center; justify-content: center; padding: 2rem;
+    }
+    .grid-bg {
+      position: fixed; inset: 0; z-index: 0;
+      background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+      background-size: 40px 40px; opacity: 0.3;
+    }
+    .card {
+      position: relative; z-index: 1; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 16px;
+      padding: 2.5rem; width: 100%; max-width: 520px;
+      box-shadow: 0 0 60px rgba(91,107,255,0.08);
+    }
+    .label-tag { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: var(--accent); letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    h1 { font-size: 1.6rem; font-weight: 600; background: linear-gradient(135deg, var(--text), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 2rem; }
+
+    /* ── Modus kiezer ── */
+    .mode-picker { display: flex; gap: 0.75rem; margin-bottom: 2rem; }
+    .mode-btn {
+      flex: 1; padding: 1rem; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--muted); text-align: center; transition: all 0.2s;
+    }
+    .mode-btn:hover { border-color: var(--accent); color: var(--text); }
+    .mode-btn.active { border-color: var(--accent); background: rgba(91,107,255,0.08); color: var(--text); }
+    .mode-btn .mode-icon { font-size: 1.6rem; display: block; margin-bottom: 0.4rem; }
+    .mode-btn .mode-label { font-size: 0.82rem; font-weight: 600; display: block; }
+    .mode-btn .mode-desc { font-size: 0.72rem; color: var(--muted); display: block; margin-top: 0.2rem; font-family: 'IBM Plex Mono', monospace; }
+
+    /* ── Panelen ── */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* ── Form elementen ── */
+    .form-group { margin-bottom: 1.25rem; }
+    label { display: block; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+    input[type="text"], select {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.95rem; padding: 0.75rem 1rem;
+      transition: border-color 0.2s, box-shadow 0.2s; appearance: none; outline: none;
+    }
+    input[type="text"]:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,107,255,0.15); }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6b8a' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 1rem center;
+      padding-right: 2.5rem; cursor: pointer;
+    }
+    select option, select optgroup { background: var(--surface); color: var(--muted); font-size: 0.8rem; }
+
+    /* ── Bestand upload ── */
+    .file-drop {
+      border: 2px dashed var(--border); border-radius: 10px;
+      padding: 2rem; text-align: center; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .file-drop:hover, .file-drop.dragover { border-color: var(--accent); background: rgba(91,107,255,0.05); }
+    .file-drop input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .file-drop .drop-icon { font-size: 2rem; display: block; margin-bottom: 0.5rem; }
+    .file-drop .drop-label { font-size: 0.88rem; color: var(--muted); }
+    .file-drop .drop-label span { color: var(--accent); font-weight: 600; }
+    .file-name { margin-top: 0.5rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--success); display: none; }
+
+    .type-badge { display: none; margin-top: 0.4rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; padding: 0.25rem 0.6rem; border-radius: 4px; width: fit-content; }
+    .type-badge.grouping { display: inline-block; background: rgba(91,107,255,0.1); border: 1px solid rgba(91,107,255,0.3); color: var(--accent2); }
+    .type-badge.appfunction { display: inline-block; background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); color: var(--fn-color); }
+
+    .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+    button[type="submit"] {
+      width: 100%; background: var(--accent); color: #fff; border: none;
+      border-radius: 8px; font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.95rem; font-weight: 600; padding: 0.85rem;
+      cursor: pointer; transition: background 0.2s, transform 0.1s, box-shadow 0.2s; margin-top: 0.5rem;
+    }
+    button[type="submit"]:hover { background: #4a5ae8; box-shadow: 0 4px 20px rgba(91,107,255,0.35); }
+    button[type="submit"]:active { transform: scale(0.98); }
+    button[type="submit"]:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .toast { margin-top: 1.25rem; border-radius: 8px; padding: 0.85rem 1rem; font-size: 0.88rem; font-family: 'IBM Plex Mono', monospace; display: none; align-items: center; gap: 0.6rem; }
+    .toast.success { display: flex; background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.3); color: var(--success); }
+    .toast.error   { display: flex; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); color: var(--error); }
+
+    .history { margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1.5rem; }
+    .history-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem; }
+    .history-list { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; max-height: 180px; overflow-y: auto; }
+    .history-list li { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--muted); padding: 0.4rem 0.6rem; background: rgba(255,255,255,0.02); border-radius: 4px; display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+    .history-list li .app { color: var(--text); }
+    .history-list li .grp { color: var(--accent2); }
+    .history-list li .fn  { color: var(--fn-color); }
+    .history-list li .view-tag { color: var(--muted); font-size: 0.68rem; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="card">
+    <div class="label-tag">ArchiMate / ZiRA</div>
+    <h1>Applicatie Importer</h1>
+
+    <!-- Modus kiezer -->
+    <div class="mode-picker">
+      <div class="mode-btn active" id="btn-handmatig" onclick="setModus('handmatig')">
+        <span class="mode-icon">✏️</span>
+        <span class="mode-label">Handmatig</span>
+        <span class="mode-desc">Één applicatie toevoegen</span>
+      </div>
+      <div class="mode-btn" id="btn-bulk" onclick="setModus('bulk')">
+        <span class="mode-icon">📥</span>
+        <span class="mode-label">Bulk import</span>
+        <span class="mode-desc">Importeren via Excel</span>
+      </div>
+      <div class="mode-btn" id="btn-view" onclick="setModus('view')">
+        <span class="mode-icon">🗂️</span>
+        <span class="mode-label">View aanmaken</span>
+        <span class="mode-desc">Nieuwe view genereren</span>
+      </div>
+    </div>
+
+    <!-- Handmatig paneel -->
+    <div class="panel active" id="panel-handmatig">
+      <div class="form-group">
+        <label for="applicatie">Applicatie</label>
+        <input type="text" id="applicatie" placeholder="bijv. SAP ERP" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label for="target">Applicatiefunctie</label>
+        <select id="target" onchange="updateTypeBadge()">
+          <option value="" data-type="">— Laden... —</option>
+        </select>
+        <div class="type-badge" id="type-badge"></div>
+      </div>
+
+      <button type="submit" id="btn-toevoegen" onclick="toevoegen()">Toevoegen aan model</button>
+      <div class="toast" id="toast-handmatig"></div>
+
+      <div class="history">
+        <div class="history-title">Toegevoegd deze sessie</div>
+        <ul class="history-list" id="history">
+          <li style="color: var(--muted); font-style: italic;">Nog niets toegevoegd</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bulk paneel -->
+    <div class="panel" id="panel-bulk">
+      <div class="form-group">
+        <label>Excel-bestand</label>
+        <div class="file-drop" id="file-drop">
+          <input type="file" id="excel-bestand" accept=".xlsx,.xls" onchange="bestandGekozen()">
+          <span class="drop-icon">📊</span>
+          <div class="drop-label">Sleep je Excel-bestand hierheen of <span>klik om te kiezen</span></div>
+        </div>
+        <div class="file-name" id="file-name"></div>
+      </div>
+
+      <div class="form-group" style="font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--muted);">
+        Verwacht formaat: kolom A = <span style="color:var(--accent2)">Applicatie</span>, kolom B = <span style="color:var(--fn-color)">ApplicatieFunctie</span>
+      </div>
+
+      <button type="submit" id="btn-bulk-import" onclick="bulkImport()" disabled>Importeren</button>
+      <div class="toast" id="toast-bulk"></div>
+
+      <div id="bulk-resultaten" style="display:none; margin-top:1.25rem;">
+        <div class="history-title">Resultaten</div>
+        <ul class="history-list" id="resultaten-list" style="max-height:220px;"></ul>
+      </div>
+    </div>
+    <!-- View aanmaken paneel -->
+    <div class="panel" id="panel-view">
+      <div class="form-group">
+        <label for="nieuwe-view-naam">Naam van de nieuwe view</label>
+        <input type="text" id="nieuwe-view-naam" placeholder="bijv. Behandeling overzicht" autocomplete="off">
+      </div>
+
+      <div class="form-group">
+        <label for="view-functie">Applicatiefunctie</label>
+        <select id="view-functie">
+          <option value="">— Laden... —</option>
+        </select>
+      </div>
+
+      <button type="submit" id="btn-view-aanmaken" onclick="viewAanmaken()">View aanmaken</button>
+      <div class="toast" id="toast-view"></div>
+    </div>
+  </div>
+
+  <script>
+    const historyItems = [];
+
+    function setModus(modus) {
+      ["handmatig", "bulk", "view"].forEach(m => {
+        document.getElementById(`panel-${m}`).classList.toggle("active", modus === m);
+        document.getElementById(`btn-${m}`).classList.toggle("active", modus === m);
+      });
+    }
+
+    async function laadAlleTargets() {
+      const sel = document.getElementById("target");
+      sel.innerHTML = '<option value="" data-type="">— Laden... —</option>';
+      const res     = await fetch("/alle-functies");
+      const targets = await res.json();
+      let html = '<option value="" data-type="">— Selecteer —</option>';
+      targets.forEach(t => { html += `<option value="${t.naam}" data-type="ApplicationFunction">${t.naam}</option>`; });
+      sel.innerHTML = html;
+    }
+
+    async function laadTargets() { await laadAlleTargets(); }
+
+    function updateTypeBadge() {
+      const sel   = document.getElementById("target");
+      const type  = sel.options[sel.selectedIndex].getAttribute("data-type");
+      const badge = document.getElementById("type-badge");
+      if (type === "Grouping")                 { badge.className = "type-badge grouping";     badge.textContent = "Grouping"; }
+      else if (type === "ApplicationFunction") { badge.className = "type-badge appfunction"; badge.textContent = "Applicatiefunctie"; }
+      else                                     { badge.className = "type-badge"; }
+    }
+
+    async function toevoegen() {
+      const applicatie  = document.getElementById("applicatie").value.trim();
+      const sel         = document.getElementById("target");
+      const target      = sel.value.trim();
+      const target_type = sel.options[sel.selectedIndex].getAttribute("data-type") || "Grouping";
+      const view_naam   = document.getElementById("view_select").value.trim();
+      const btn         = document.getElementById("btn-toevoegen");
+
+      if (!applicatie || !target) { toonToast("Vul beide velden in", false, "handmatig"); return; }
+
+      btn.disabled = true; btn.textContent = "Bezig...";
+      document.getElementById("toast-handmatig").className = "toast";
+
+      try {
+        const res  = await fetch("/toevoegen", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ applicatie, grouping: target, target_type, view_naam: "" })
+        });
+        const data = await res.json();
+        toonToast(data.bericht, data.success, "handmatig");
+        if (data.success) {
+          voegToeAanHistory(applicatie, target, target_type, "");
+          document.getElementById("applicatie").value = "";
+          sel.value = ""; updateTypeBadge();
+          document.getElementById("applicatie").focus();
+        }
+      } catch (e) { toonToast("Verbindingsfout — draait de server?", false, "handmatig"); }
+
+      btn.disabled = false; btn.textContent = "Toevoegen aan model";
+    }
+
+    function bestandGekozen() {
+      const input    = document.getElementById("excel-bestand");
+      const fileNaam = document.getElementById("file-name");
+      const btn      = document.getElementById("btn-bulk-import");
+      if (input.files.length > 0) {
+        fileNaam.textContent = "✓ " + input.files[0].name;
+        fileNaam.style.display = "block";
+        btn.disabled = false;
+      }
+    }
+
+    async function bulkImport() {
+      const input = document.getElementById("excel-bestand");
+      const btn   = document.getElementById("btn-bulk-import");
+      if (!input.files.length) { toonToast("Kies eerst een Excel-bestand", false, "bulk"); return; }
+
+      btn.disabled = true; btn.textContent = "Bezig...";
+      document.getElementById("bulk-resultaten").style.display = "none";
+      document.getElementById("resultaten-list").innerHTML = "";
+      const formData = new FormData();
+      formData.append("bestand", input.files[0]);
+
+      try {
+        const res  = await fetch("/bulk", { method: "POST", body: formData });
+        const data = await res.json();
+        toonToast(data.bericht, data.success, "bulk");
+
+        if (data.resultaten && data.resultaten.length) {
+          const list = document.getElementById("resultaten-list");
+          document.getElementById("bulk-resultaten").style.display = "block";
+          data.resultaten.forEach(r => {
+            const li  = document.createElement("li");
+            const cls = r.startsWith("✓") ? "app" : r.startsWith("~") ? "grp" : "fn";
+            li.innerHTML = `<span class="${cls}">${r}</span>`;
+            list.appendChild(li);
+          });
+        }
+      } catch (e) { toonToast("Verbindingsfout — draait de server?", false, "bulk"); }
+
+      btn.disabled = false; btn.textContent = "Importeren";
+    }
+
+    function toonToast(bericht, success, paneel) {
+      const toast = document.getElementById(`toast-${paneel}`);
+      toast.className = "toast " + (success ? "success" : "error");
+      toast.textContent = (success ? "✓ " : "✗ ") + bericht;
+      setTimeout(() => toast.className = "toast", 5000);
+    }
+
+    function voegToeAanHistory(app, target, type, view) {
+      const list = document.getElementById("history");
+      if (historyItems.length === 0) list.innerHTML = "";
+      historyItems.unshift({ app, target, type, view });
+      const li  = document.createElement("li");
+      const cls = type === "ApplicationFunction" ? "fn" : "grp";
+      li.innerHTML = `<span class="app">${app}</span><span class="${cls}">${target}</span><span class="view-tag">${view}</span>`;
+      list.prepend(li);
+    }
+
+    // Drag & drop styling
+    const drop = document.getElementById("file-drop");
+    drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("dragover"); });
+    drop.addEventListener("dragleave", () => drop.classList.remove("dragover"));
+    drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("dragover"); document.getElementById("excel-bestand").files = e.dataTransfer.files; bestandGekozen(); });
+
+    async function viewAanmaken() {
+      const view_naam     = document.getElementById("nieuwe-view-naam").value.trim();
+      const functie_naam  = document.getElementById("view-functie").value.trim();
+      const btn           = document.getElementById("btn-view-aanmaken");
+
+      if (!view_naam || !functie_naam) { toonToast("Vul alle velden in", false, "view"); return; }
+
+      btn.disabled = true; btn.textContent = "Bezig...";
+      document.getElementById("toast-view").className = "toast";
+
+      try {
+        const res  = await fetch("/maak-view", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ view_naam, functie_naam })
+        });
+        const data = await res.json();
+        toonToast(data.bericht, data.success, "view");
+        if (data.success) {
+          document.getElementById("nieuwe-view-naam").value = "";
+          document.getElementById("view-functie").value = "";
+        }
+      } catch (e) { toonToast("Verbindingsfout — draait de server?", false, "view"); }
+
+      btn.disabled = false; btn.textContent = "View aanmaken";
+    }
+
+    // Vul view-functie dropdown op load
+    async function laadViewFuncties() {
+      const res     = await fetch("/alle-functies");
+      const targets = await res.json();
+      const sel     = document.getElementById("view-functie");
+      let html      = '<option value="">— Selecteer —</option>';
+      targets.forEach(t => { html += `<option value="${t.naam}">${t.naam}</option>`; });
+      sel.innerHTML = html;
+    }
+
+    document.addEventListener("keydown", e => { if (e.key === "Enter") toevoegen(); });
+    window.addEventListener("load", () => { laadAlleTargets(); laadViewFuncties(); });
+  </script>
+</body>
+</html>
